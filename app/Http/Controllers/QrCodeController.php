@@ -1,83 +1,11 @@
 <?php
-#
-#namespace App\Http\Controllers;
-#
-#use App\Models\QrCode;
-#use Illuminate\Http\Request;
-#use QrCode as QRCodeGenerator;
-#
-#class QrCodeController extends Controller
-#{
-#  public function store(Request $request)
-#  {
-#    $request->validate([
-#      'title' => 'required|string|max:255',
-#      'description' => 'required|string',
-#      'url' => 'required|url',
-#    ]);
-#
-#    // Generate QR Code based on the URL
-#    $qrCodeImage = QRCodeGenerator::format('png')
-#      ->size(200)
-#      ->generate($request->url);
-#
-#    $qrCode = new QrCode;
-#    $qrCode->title = $request->title;
-#    $qrCode->description = $request->description;
-#    $qrCode->url = $request->url;
-#    $qrCode->qr_code_image = base64_encode($qrCodeImage); // Save the QR code as a base64 string
-#    $qrCode->save();
-#
-#    return redirect()->route('qrcodes.create');
-#  }
-#
-#  public function generateQrCode(Request $request)
-#  {
-#    $request->validate([
-#      'url' => 'required|url',
-#    ]);
-#
-#    // Generate QR Code based on the URL
-#    $qrCodeImage = QRCodeGenerator::format('png')
-#      ->size(200)
-#      ->generate($request->url);
-#
-#    return response()->json(['qrCode' => base64_encode($qrCodeImage)]);
-#  }
-#}
-
-#namespace App\Http\Controllers;
-#use Illuminate\Http\Request;
-#use SimpleSoftwareIO\QrCode\Facades\QrCode;
-#class QrCodeController extends Controller
-#{
-#  public function index()
-#  {
-#    return view('qr-form');
-#  }
-#
-#  public function generate(Request $request)
-#  {
-#    $request->validate([
-#      'title' => 'required',
-#      'url' => 'required|url',
-#      'description' => 'nullable',
-#    ]);
-#
-#    $qrCode = QrCode::size(200)->generate($request->url);
-#
-#    return view('qr-result', [
-#      'title' => $request->title,
-#      'description' => $request->description,
-#      'qrCode' => $qrCode
-#    ]);
-#  }
-#}
 namespace App\Http\Controllers;
-
-use Illuminate\Http\Request;
 use App\Models\QrCode;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Response;
 use SimpleSoftwareIO\QrCode\Facades\QrCode as QrCodeGenerator;
+
 
 class QrCodeController extends Controller
 {
@@ -88,16 +16,16 @@ class QrCodeController extends Controller
 
   public function store(Request $request)
   {
-    $request->validate([
+    $validatedData = $request->validate([
       'title' => 'required|string|max:255',
       'url' => 'required|url',
-      'description' => 'required|string',
+      'description' => 'nullable|string',
     ]);
 
-    $qrCode = QrCode::create($request->all());
+    $qrCode = QrCode::create($validatedData);
 
-
-    return redirect()->route('qrcodes.show', $qrCode->id);
+    // Return the ID of the created QR code as JSON
+    return response()->json(['id' => $qrCode->id]);
   }
 
   public function show($id)
@@ -109,30 +37,49 @@ class QrCodeController extends Controller
 
   public function generateQrCode($id)
   {
-    $qrCode = QrCode::findOrFail($id);
-    // $qrCodeImage = QrCodeGenerator::size(200)->generate($qrCode->url);
-    $qrCodeImage = QrCodeGenerator::size(200)
-      ->errorCorrection('H') // Higher error correction
-      ->color(23, 5, 100) // Blue color
-      // ->border(4, 23, 5, 100)
-      ->backgroundColor(255, 255, 255) // White background
-      ->margin(10) // Adds a border/margin of 10 pixels
+    $qrCode = Qrcode::findOrFail($id);
+
+    // Generate QR code with logo
+    $qrCodeImageWithLogo = QrCodeGenerator::format('png')
+      ->size(240)
+      ->errorCorrection('H')
+      ->backgroundColor(255, 255, 255)
+      ->margin(12)
+      ->merge('storage/images/kmlogo.png', 0.15, true)
       ->generate($qrCode->url);
 
-    // To add a logo
-    // $logoPath = public_path('storage/images/logo.jpg');
+    // Create file path to save the QR code image
+    $fileName = 'qrcode_' . $qrCode->id . '.png';
+    $filePath = public_path('qr_codes/' . $fileName);
 
-    // $logoPath = public_path() . '\storage\images\logo.jpg';
-    // $logoPath = base_path('public/storage/images/logo.jpg');
+    // Store the generated QR code image in the public directory
+    Storage::put('public/qr_codes/' . $fileName, $qrCodeImageWithLogo);
 
-    $qrCodeImageWithLogo = QrCodeGenerator::size(200)
-      ->errorCorrection('H') // Higher error correction
-      ->color(0, 0, 255) // Blue color
-      ->backgroundColor(255, 255, 255) // White background
-      ->margin(10) // Adds a border/margin of 10 pixels
-      // ->merge($logoPath, 0.2) // Use the local file path and size ratio (0.2 is 20% of the QR size)
-      ->generate($qrCode->url);
-    return view('qrcode.qrcode', compact('qrCode', 'qrCodeImage'));
+    return view('qrcode.qrcode', [
+      'qrCode' => $qrCode,
+      'qrCodeImageWithLogo' => $qrCodeImageWithLogo,
+      'filePath' => asset('storage/qr_codes/' . $fileName), // Add this for the download link
+
+
+    ]);
+  }
+  public function downloadQrCode($id)
+  {
+    $qrCode = Qrcode::findOrFail($id);
+    $filePath = 'public/qr_codes/qrcode_' . $qrCode->id . '.png';
+
+    // Check if the file exists in storage
+    if (Storage::exists($filePath)) {
+      $fileContent = Storage::get($filePath);
+      $headers = [
+        'Content-Type' => 'image/png',
+        'Content-Disposition' => 'attachment; filename="qrcode_' . $qrCode->id . '.png"',
+      ];
+
+      return Response::make($fileContent, 200, $headers);
+    } else {
+      return abort(404, 'QR Code not found.');
+    }
   }
 
 }

@@ -26,6 +26,8 @@ Route::get('/qrcodes/create', [QrCodeController::class, 'create'])->name('qrcode
 Route::post('/qrcodes/store', [QrCodeController::class, 'store'])->name('qrcodes.store');
 Route::get('/qrcodes/{id}', [QrCodeController::class, 'show'])->name('qrcodes.show');
 Route::get('/qrcodes/{id}/generate', [QrCodeController::class, 'generateQrCode'])->name('qrcodes.generate');
+Route::get('/qrcodes/download/{id}', [QrCodeController::class, 'downloadQrCode'])->name('qrcode.download');
+
 #Route::post('/qrcodes/store', [QrCodeController::class, 'store'])->name('qrcodes.store');
 #Route::post('/qrcodes/generate', [QrCodeController::class, 'generateQrCode'])->name('qrcodes.generate');
 
